@@ -146,7 +146,7 @@
     recorder.finishRecording();
     stopRecognisingFunc();
 
-    isRecordingBusy = true;
+    isRecordingBusy = false;
   }
 
   onMount(async () => {
