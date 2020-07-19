@@ -1,10 +1,17 @@
 <script>
   import { onMount } from "svelte";
   import { createRecogniser } from "./services/SpeechRecogniser.js";
+  import { createRecorder } from "./services/WebAudioRecorder.js";
+  import { saveFile } from "./services/FileIO.js";
 
-  const tmpRecordDuration = 10000;
+  let domIsReady = false;
+
+  const tmpRecordDuration = 5000;
 
   let audioElement;
+  let recorder;
+  let recognition;
+  let stopRecognisingFunc;
   let errors = [];
   let lastAudioBlob;
 
@@ -18,53 +25,49 @@
   }
 
   let speechRecognitionError;
+  let isRecordingBusy = false;
   let isReceivingSpeech = false;
   let phrases = [];
 
-  createRecogniser({
-    onTranscriptReceived: transcript => {
-      phrases = [
-        {
-          timeString: new Date().toISOString().substr(0, 19),
-          transcript
-        },
-        ...phrases
-      ];
-    },
-    onSpeechStart: () => {
-      isReceivingSpeech = true;
-    },
-    onSpeechEnd: () => {
-      isReceivingSpeech = false;
-    },
-    onSpeechRecognitionError: error => {
-      speechRecognitionError = error;
-    }
-  });
+  function getFilenameSafeTimeString() {
+    return new Date()
+      .toISOString()
+      .substr(0, 19)
+      .replace(/:/g, "-");
+  }
 
-  async function shareFile() {
+  function createTextBlobFromPhrases() {
+    return new Blob(
+      // ["Welcome to Websparrow.org."],
+      [phrases.map(p => `[${p.timeString}] ${p.transcript}`).join("\n")],
+      {
+        // type: "text/plain;charset=utf-8"
+        type: "text/plain"
+      }
+    );
+  }
+
+  async function shareFiles() {
     try {
-      const timeString = new Date()
-        .toISOString()
-        .substr(0, 19)
-        .replace(/:/g, "-");
+      const filenameSafeTimeString = getFilenameSafeTimeString();
 
-      var txtBlob = new Blob(
-        // ["Welcome to Websparrow.org."],
-        [phrases.map(p => `[${p.timeString}] ${p.transcript}`).join(" ")],
+      const txtBlob = createTextBlobFromPhrases();
+      console.debug("filenameSafeTimeString", filenameSafeTimeString);
+      const txtFile = new File(
+        [txtBlob],
+        `Transcript-${filenameSafeTimeString}.txt`,
         {
-          // type: "text/plain;charset=utf-8"
-          type: "text/plain"
+          type: txtBlob.type
         }
       );
-      console.debug("timeString", timeString);
-      const txtFile = new File([txtBlob], `Transcript-${timeString}.txt`, {
-        type: txtBlob.type
-      });
 
-      const oggFile = new File([lastAudioBlob], `Voicenote-${timeString}.ogg`, {
-        type: lastAudioBlob.type
-      });
+      const oggFile = new File(
+        [lastAudioBlob],
+        `Voicenote-${filenameSafeTimeString}.ogg`,
+        {
+          type: lastAudioBlob.type
+        }
+      );
       console.debug("oggFile", oggFile);
 
       await navigator.share({
@@ -84,56 +87,70 @@
     }
   }
 
-  onMount(async () => {
-    let options = { audio: true, video: false };
-    const stream = await navigator.mediaDevices.getUserMedia(options);
+  async function saveFiles() {
+    const txtBlob = createTextBlobFromPhrases();
 
-    let AudioContext = window.AudioContext || window.webkitAudioContext;
-    let audioContext = new AudioContext();
-    let source = audioContext.createMediaStreamSource(stream);
-    let recorder = new WebAudioRecorder(source, {
-      workerDir: "lib-minified/", // must end with slash
-      encoding: "ogg",
-      options: {
-        encodeAfterRecord: true,
-        ogg: { bitRate: "320" }
+    const filenameSafeTimeString = getFilenameSafeTimeString();
+    saveFile({
+      blob: txtBlob,
+      fileName: `Transcript-${filenameSafeTimeString}.txt`
+    });
+
+    saveFile({
+      blob: lastAudioBlob,
+      fileName: `Voicenote-${filenameSafeTimeString}.ogg`
+    });
+  }
+
+  async function startRecordingAndRecognition() {
+    recorder = await createRecorder({
+      onComplete: ({ blob }) => {
+        let audioElementSource = window.URL.createObjectURL(blob);
+        audioElement.src = audioElementSource;
+        audioElement.controls = true;
+
+        console.debug("audioElementSource", audioElementSource);
+        console.debug("blob", blob);
+        lastAudioBlob = blob;
       }
     });
 
-    recorder.onEncoderLoading = function(recorder, encoding) {
-      console.debug("onEncoderLoading", recorder, encoding);
-    };
-    recorder.onEncoderLoaded = function(recorder, encoding) {
-      console.debug("onEncoderLoaded", recorder, encoding);
-    };
-    recorder.onTimeout = function(recorder) {
-      console.debug("onTimeout", recorder);
-    };
-    recorder.onEncodingProgress = function(recorder, progress) {
-      console.debug("onEncodingProgress", recorder, progress);
-    };
-    recorder.onEncodingCanceled = function(recorder) {
-      console.debug("onEncodingCanceled", recorder);
-    };
-    recorder.onComplete = async function(recorder, blob) {
-      console.debug("onComplete", recorder, blob);
-      let audioElementSource = window.URL.createObjectURL(blob);
-      audioElement.src = audioElementSource;
-      audioElement.controls = true;
-
-      console.debug("audioElementSource", audioElementSource);
-      console.debug("blob", blob);
-      lastAudioBlob = blob;
-    };
-    recorder.onError = function(recorder, message) {
-      console.debug("onError", recorder, message);
-    };
+    const recogniserResult = createRecogniser({
+      onTranscriptReceived: transcript => {
+        phrases = [
+          {
+            timeString: new Date().toISOString().substr(0, 19),
+            transcript
+          },
+          ...phrases
+        ];
+      },
+      onSpeechStart: () => {
+        isReceivingSpeech = true;
+      },
+      onSpeechEnd: () => {
+        isReceivingSpeech = false;
+      },
+      onSpeechRecognitionError: error => {
+        speechRecognitionError = error;
+      }
+    });
+    recognition = recogniserResult.recognition;
+    stopRecognisingFunc = recogniserResult.stopRecognising;
 
     recorder.startRecording();
+    isRecordingBusy = true;
+  }
 
-    setTimeout(() => {
-      recorder.finishRecording();
-    }, tmpRecordDuration);
+  function finishRecordingAndRecognition() {
+    recorder.finishRecording();
+    stopRecognisingFunc();
+
+    isRecordingBusy = true;
+  }
+
+  onMount(async () => {
+    domIsReady = true;
   });
 </script>
 
@@ -144,37 +161,61 @@
   }
 </style>
 
-<audio bind:this={audioElement} />
-
-{#if lastAudioBlob}
-  <div>
-    <button on:click={shareFile}>Share file</button>
-  </div>
-{/if}
-
-{#if errors.length > 0}
-  <div>
-    Errors:
-    <ul>
-      {#each errors as err}
-        <li>{err}</li>
-      {/each}
-    </ul>
-  </div>
-{/if}
-
-<ol>
-  {#if speechRecognitionError}
-    <li>ERROR: {speechRecognitionError}</li>
+{#if domIsReady}
+  {#if isRecordingBusy}
+    <div>
+      <button on:click={finishRecordingAndRecognition}>Finish recording</button>
+    </div>
+  {:else}
+    <div>
+      <button on:click={startRecordingAndRecognition}>
+        Test recording and recognition
+      </button>
+    </div>
   {/if}
-  <li>
-    {#if isReceivingSpeech}Receiving speech...{:else}Waiting for speech...{/if}
-  </li>
 
-  {#each phrases as phrase}
-    <li>
-      <span class="time">[{phrase.timeString}]</span>
-      {phrase.transcript}
-    </li>
-  {/each}
-</ol>
+  <audio bind:this={audioElement} />
+
+  {#if lastAudioBlob}
+    <div>
+      <button on:click={shareFiles}>Share files</button>
+    </div>
+    <div>
+      <button on:click={saveFiles}>Save files</button>
+    </div>
+  {/if}
+
+  {#if errors.length > 0}
+    <div>
+      Errors:
+      <ul>
+        {#each errors as err}
+          <li>{err}</li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
+  <ol>
+    {#if speechRecognitionError}
+      <li>ERROR: {speechRecognitionError}</li>
+    {/if}
+
+    {#if isRecordingBusy}
+      {#if isReceivingSpeech}
+        <li>Receiving speech...</li>
+      {:else}
+        <li>No speech detected...</li>
+      {/if}
+    {/if}
+
+    {#each phrases as phrase}
+      <li>
+        <span class="time">[{phrase.timeString}]</span>
+        {phrase.transcript}
+      </li>
+    {/each}
+  </ol>
+{:else}
+  <div>Loading...</div>
+{/if}

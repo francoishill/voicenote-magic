@@ -1,6 +1,7 @@
 export function createRecogniser({ onTranscriptReceived, onSpeechStart, onSpeechEnd, onSpeechRecognitionError }) {
     let speechRecognitionError;
     let voiceRecognitionActive = false;
+    let keepListening = true;
 
     var speech = window["SpeechRecognition"] || window["webkitSpeechRecognition"];
 
@@ -10,8 +11,8 @@ export function createRecogniser({ onTranscriptReceived, onSpeechStart, onSpeech
 
         recognition.maxAlternatives = 2;
         // recognition.continuous = true;
-        // recognition.lang = "af-ZA"; // Afrikaans only supported in Chrome
-        recognition.lang = 'en-US';
+        recognition.lang = "af-ZA"; // Afrikaans only supported in Chrome
+        // recognition.lang = 'en-US';
 
         // This will run when the speech recognition service returns a result
         recognition.onstart = function () {
@@ -23,7 +24,7 @@ export function createRecogniser({ onTranscriptReceived, onSpeechStart, onSpeech
         recognition.onend = function () {
             voiceRecognitionActive = false;
             // console.log("Speech recognition service disconnected");
-            if (!speechRecognitionError) {
+            if (!speechRecognitionError && keepListening) {
                 recognition.start();
             }
         };
@@ -74,13 +75,22 @@ export function createRecogniser({ onTranscriptReceived, onSpeechStart, onSpeech
 
         recognition.onspeechstart = function () {
             console.log("Speech has been detected");
+            if (onSpeechStart) { onSpeechStart(); }
         };
         recognition.onspeechend = function () {
             console.log("Speech has stopped being detected");
+            if (onSpeechEnd) { onSpeechEnd(); }
         };
 
         // start recognition
         recognition.start();
+
+        function stopRecognising() {
+            keepListening = false
+            recognition.stop()
+        }
+
+        return { recognition, stopRecognising }
     } else {
         console.log("Speech recognition not supported 😢");
         speechRecognitionError = "Speech recognition not supported 😢";
