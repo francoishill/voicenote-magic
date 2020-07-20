@@ -5,10 +5,15 @@ export async function createRecorder({ onComplete }) {
     let AudioContext = window.AudioContext || window.webkitAudioContext;
     let audioContext = new AudioContext();
     let source = audioContext.createMediaStreamSource(stream);
+
+    const maxRecordingMinutes = 30;
+    const maxRecordingSeconds = maxRecordingMinutes * 60;
+
     let recorder = new WebAudioRecorder(source, {
         workerDir: "lib-minified/", // must end with slash
         encoding: "ogg",
         options: {
+            timeLimit: maxRecordingSeconds,
             encodeAfterRecord: true,
             ogg: { bitRate: "320" }
         }
