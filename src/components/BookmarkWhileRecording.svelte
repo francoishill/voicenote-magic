@@ -110,9 +110,10 @@
   }
 
   function combineBookmarksAsText() {
-    return bookmarks
-      .map(b => `[${b.time.toFixed(2)}s] ${b.transcript}`)
-      .join("\n");
+    return (
+      "Voicenote bookmarks\n" +
+      bookmarks.map(b => `[${b.time.toFixed(2)}s] ${b.transcript}`).join("\n")
+    );
   }
 
   function createTextFile(filenameSafeTimeString) {
@@ -223,6 +224,12 @@
   .spacer-20 {
     margin-top: 20px;
   }
+  .simple-card {
+    border: solid 1px #ccc;
+    border-radius: 3px;
+    width: 300px;
+    padding: 15px;
+  }
 </style>
 
 {#if !recorder}
@@ -299,6 +306,18 @@
     </button>
   </div>
 {/if}
+
+<div class="spacer-20" />
+
+<div class="simple-card">
+  <div>Instructions</div>
+  <ul>
+    <li>Start recording</li>
+    <li>Add a bookmark before you start speaking about the next topic</li>
+    <li>Stop recording</li>
+    <li>Give a short summary for each bookmark</li>
+  </ul>
+</div>
 
 <div class="spacer-20" />
 

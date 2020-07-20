@@ -35,7 +35,7 @@
   }
 </script>
 
-<input bind:value placeholder="Name this bookmark..." />
+<input bind:value placeholder="Summary..." />
 
 {#if !recogniser}
   <button on:click={transcribeAudioPhrase}>
